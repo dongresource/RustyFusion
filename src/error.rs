@@ -81,7 +81,7 @@ impl Debug for FFError {
 }
 impl Display for FFError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.get_formatted(true, false))
+        write!(f, "{}", self.get_formatted(true, true, false))
     }
 }
 impl From<std::io::Error> for FFError {
@@ -187,7 +187,7 @@ impl FFError {
         }
     }
 
-    pub fn get_formatted(&self, colored: bool, with_time: bool) -> String {
+    pub fn get_formatted(&self, with_severity: bool, colored: bool, with_time: bool) -> String {
         let mut msg = if with_time {
             let time_str = util::get_timestamp_str(self.timestamp);
             let timestamp_formatted = if colored {
@@ -196,24 +196,27 @@ impl FFError {
                 format!("[{}]", time_str)
             };
 
-            format!(
-                "{} {} {}",
-                timestamp_formatted,
-                self.get_severity().get_label(colored),
-                self.msg
-            )
+            if with_severity {
+                format!("{} {} {}", timestamp_formatted, self.get_severity().get_label(colored), self.msg)
+            } else {
+                format!("{} {}", timestamp_formatted, self.msg)
+            }
         } else {
-            format!("{} {}", self.get_severity().get_label(colored), self.msg)
+            if with_severity {
+                format!("{} {}", self.get_severity().get_label(colored), self.msg)
+            } else {
+                self.msg.clone()
+            }
         };
 
         if let Some(parent) = self.parent.as_ref() {
             let sub_formatted = if colored {
                 format!(
                     "\n  \x1b[90mfrom:\x1b[0m {}",
-                    parent.get_formatted(true, with_time)
+                    parent.get_formatted(false, true, with_time)
                 )
             } else {
-                format!("\n  from: {}", parent.get_formatted(false, with_time))
+                format!("\n  from: {}", parent.get_formatted(false, false, with_time))
             };
             msg.push_str(&sub_formatted);
         }
@@ -245,7 +248,7 @@ pub fn log_error(err: FFError) {
         let _ = tx.send(err);
     } else {
         // Before log_init, fall back to stdout
-        let msg = err.get_formatted(true, true);
+        let msg = err.get_formatted(true, true, true);
         println!("{}", msg);
     }
 }
@@ -295,7 +298,7 @@ impl Logger {
             // queue for file writing
             if severity as usize <= threshold_file {
                 if let Some(writer) = &mut self.file_writer {
-                    let msg = err.get_formatted(false, true);
+                    let msg = err.get_formatted(true, false, true);
                     let _ = writeln!(writer, "{}", msg);
                 }
             }
@@ -306,7 +309,7 @@ impl Logger {
                     buffer.push(err);
                 } else {
                     // If buffer is disabled, print to stdout immediately
-                    let msg = err.get_formatted(true, true);
+                    let msg = err.get_formatted(true, true, true);
                     println!("{}", msg);
                 }
             }
